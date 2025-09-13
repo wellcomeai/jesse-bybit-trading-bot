@@ -1,5 +1,4 @@
-# notifications/telegram_bot.py - ГОТОВАЯ К ДЕПЛОЮ ВЕРСИЯ
-# ИСПРАВЛЕНО: Упрощена логика event loop, безопасные методы отправки
+# notifications/telegram_bot.py - ИСПРАВЛЕНО для python-telegram-bot 20.0+
 
 import asyncio
 import os
@@ -16,7 +15,7 @@ from telegram.error import TelegramError, RetryAfter
 
 class TelegramNotifier:
     """
-    ИСПРАВЛЕННЫЙ Telegram бот без конфликтов event loop
+    ИСПРАВЛЕННЫЙ Telegram бот для python-telegram-bot 20.0+
     Готов к продакшн использованию
     """
     
@@ -44,9 +43,7 @@ class TelegramNotifier:
         self.message_timeout = 10
     
     def start_bot(self):
-        """
-        ИСПРАВЛЕНО: Запускает бота БЕЗ конфликтов event loop
-        """
+        """Запускает бота БЕЗ конфликтов event loop"""
         if self.running:
             self.logger.warning("⚠️ Бот уже запущен")
             return
@@ -56,9 +53,6 @@ class TelegramNotifier:
             try:
                 self.running = True
                 self.logger.info("🚀 Запуск Telegram бота в отдельном потоке...")
-                
-                # ИСПРАВЛЕНИЕ: Позволяем run_polling() создать свой event loop
-                # НЕ создаем event loop вручную!
                 
                 # Создаем Application
                 self.application = Application.builder().token(self.bot_token).build()
@@ -70,11 +64,11 @@ class TelegramNotifier:
                 self.application.add_handler(CommandHandler("status", self._command_status))
                 
                 # Добавляем обработчики кнопок
-                self.application.add_handler(CallbackQueryHandler(self._handle_button, pattern="^(status|help|main_menu)$"))
+                self.application.add_handler(CallbackQueryHandler(self._handle_button))
                 
                 self.logger.info("✅ Обработчики команд добавлены")
                 
-                # ИСПРАВЛЕНИЕ: Запускаем polling и позволяем ему создать event loop
+                # Запускаем polling
                 self.application.run_polling(
                     drop_pending_updates=True,
                     allowed_updates=Update.ALL_TYPES
@@ -110,7 +104,12 @@ class TelegramNotifier:
             user_info = f"{update.effective_user.username} (ID: {update.effective_chat.id})"
             self.logger.info(f"🚀 /start от {user_info}")
             
-            keyboard = self._get_main_keyboard()
+            # ИСПРАВЛЕНО: Новый синтаксис для 20.0+
+            keyboard = [
+                [InlineKeyboardButton("📊 Статус системы", callback_data="status")],
+                [InlineKeyboardButton("ℹ️ Справка", callback_data="help")]
+            ]
+            reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)  # ← КЛЮЧЕВОЕ ИЗМЕНЕНИЕ!
             
             welcome_text = (
                 "🤖 <b>AI Trading Bot</b>\n\n"
@@ -125,7 +124,7 @@ class TelegramNotifier:
             await update.message.reply_text(
                 welcome_text,
                 parse_mode='HTML',
-                reply_markup=keyboard
+                reply_markup=reply_markup
             )
             
             self.logger.info("✅ Ответ на /start отправлен")
@@ -159,12 +158,14 @@ class TelegramNotifier:
                 "• QualityTrader (1h) - Качественные сигналы"
             )
             
-            keyboard = self._get_main_keyboard()
+            # ИСПРАВЛЕНО: Новый синтаксис кнопки
+            keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]]
+            reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
             
             await update.message.reply_text(
                 help_text,
                 parse_mode='HTML',
-                reply_markup=keyboard
+                reply_markup=reply_markup
             )
             
             self.logger.info("✅ Справка отправлена")
@@ -195,12 +196,14 @@ class TelegramNotifier:
                 f"📅 Дата: {datetime.now().strftime('%Y-%m-%d')}"
             )
             
-            keyboard = self._get_main_keyboard()
+            # ИСПРАВЛЕНО: Новый синтаксис кнопки
+            keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]]
+            reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
             
             await update.message.reply_text(
                 status_text,
                 parse_mode='HTML',
-                reply_markup=keyboard
+                reply_markup=reply_markup
             )
             
             self.logger.info("✅ Статус отправлен")
@@ -212,35 +215,102 @@ class TelegramNotifier:
         """Обработчик нажатий кнопок"""
         try:
             query = update.callback_query
-            await query.answer()
+            await query.answer()  # Убираем "loading" с кнопки
             
             if query.data == "status":
-                await self._command_status(update, context)
+                await self._show_status_inline(query)
             elif query.data == "help":
-                await self._command_help(update, context)
+                await self._show_help_inline(query)
             elif query.data == "main_menu":
-                await query.edit_message_text(
-                    "🤖 <b>AI Trading Bot</b>\n\nГлавное меню. Выберите действие:",
-                    parse_mode='HTML',
-                    reply_markup=self._get_main_keyboard()
-                )
+                await self._show_main_menu_inline(query)
             
         except Exception as e:
             self.logger.error(f"❌ Ошибка обработки кнопки: {e}")
     
-    def _get_main_keyboard(self) -> InlineKeyboardMarkup:
-        """Создает основную клавиатуру"""
+    async def _show_status_inline(self, query):
+        """Показывает статус через inline кнопки"""
+        ai_status = "✅ Включен" if os.getenv('AI_ANALYSIS_ENABLED') == 'true' else "❌ Отключен"
+        
+        status_text = (
+            "🟢 <b>СТАТУС СИСТЕМЫ</b>\n\n"
+            f"📱 Telegram бот: ✅ Работает\n"
+            f"🤖 ИИ анализ: {ai_status}\n"
+            "📊 Jesse фреймворк: ✅ Активен\n"
+            "🔄 Стратегии: 3 активные\n\n"
+            "<b>Активные стратегии:</b>\n"
+            "• ActiveScalper (BTCUSDT, 5m)\n"
+            "• BalancedTrader (BTCUSDT, 15m)\n"
+            "• QualityTrader (BTCUSDT, 1h)\n\n"
+            f"⏰ {datetime.now().strftime('%H:%M:%S')} | 📅 {datetime.now().strftime('%d.%m.%Y')}"
+        )
+        
+        keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]]
+        reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+        
+        await query.edit_message_text(
+            text=status_text,
+            parse_mode='HTML',
+            reply_markup=reply_markup
+        )
+    
+    async def _show_help_inline(self, query):
+        """Показывает справку через inline кнопки"""
+        help_text = (
+            "📖 <b>СПРАВКА AI Trading Bot</b>\n\n"
+            "<b>Команды:</b>\n"
+            "• /start - Главное меню\n"
+            "• /help - Эта справка\n"
+            "• /status - Статус системы\n\n"
+            "<b>Функции:</b>\n"
+            "🤖 Автоматический ИИ анализ торговых сигналов\n"
+            "📊 Мониторинг результатов стратегий\n"
+            "📱 Уведомления о важных событиях\n"
+            "🔔 Оповещения об открытии/закрытии позиций\n\n"
+            "<b>Стратегии:</b>\n"
+            "• ActiveScalper (5m) - Быстрые сделки\n"
+            "• BalancedTrader (15m) - Сбалансированная торговля\n"
+            "• QualityTrader (1h) - Качественные сигналы\n\n"
+            "Бот работает автоматически!"
+        )
+        
+        keyboard = [[InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]]
+        reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+        
+        await query.edit_message_text(
+            text=help_text,
+            parse_mode='HTML',
+            reply_markup=reply_markup
+        )
+    
+    async def _show_main_menu_inline(self, query):
+        """Показывает главное меню через inline кнопки"""
+        welcome_text = (
+            "🤖 <b>AI Trading Bot</b>\n\n"
+            "Добро пожаловать! Я ваш помощник по криптотрейдингу.\n\n"
+            "🔹 Анализирую рынок с помощью ИИ\n"
+            "🔹 Отправляю торговые сигналы\n"
+            "🔹 Слежу за вашими стратегиями\n\n"
+            f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}\n\n"
+            "Выберите действие:"
+        )
+        
         keyboard = [
             [InlineKeyboardButton("📊 Статус системы", callback_data="status")],
             [InlineKeyboardButton("ℹ️ Справка", callback_data="help")]
         ]
-        return InlineKeyboardMarkup(keyboard)
+        reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+        
+        await query.edit_message_text(
+            text=welcome_text,
+            parse_mode='HTML',
+            reply_markup=reply_markup
+        )
     
     # === МЕТОДЫ ДЛЯ ОТПРАВКИ СООБЩЕНИЙ ===
     
     async def send_message_safe(self, text: str, parse_mode: str = 'HTML') -> bool:
         """
-        ИСПРАВЛЕНО: Безопасная отправка сообщений БЕЗ конфликтов event loop
+        Безопасная отправка сообщений БЕЗ конфликтов event loop
         """
         for attempt in range(self.max_retries):
             try:
@@ -276,9 +346,7 @@ class TelegramNotifier:
         return False
     
     def send_message_sync(self, text: str, parse_mode: str = 'HTML') -> bool:
-        """
-        Синхронная отправка сообщения (для использования из Jesse стратегий)
-        """
+        """Синхронная отправка сообщения (для использования из Jesse стратегий)"""
         def send_in_thread():
             try:
                 # Создаем новый event loop для этого потока
@@ -309,7 +377,6 @@ class TelegramNotifier:
     async def send_analysis_notification(self, signal_data: Dict[str, Any], ai_analysis: Dict[str, Any]) -> bool:
         """Отправляет уведомление об ИИ анализе"""
         try:
-            # Динамический импорт для избежания циклических зависимостей
             from notifications.message_formatter import MessageFormatter
             
             formatter = MessageFormatter()
@@ -363,7 +430,6 @@ class TelegramNotifier:
 def create_telegram_notifier() -> Optional[TelegramNotifier]:
     """
     Безопасная фабрика для создания TelegramNotifier
-    Возвращает None если не удалось создать (например, нет токенов)
     """
     try:
         notifier = TelegramNotifier()
@@ -373,9 +439,8 @@ def create_telegram_notifier() -> Optional[TelegramNotifier]:
         return None
 
 
-# === ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР (опционально) ===
+# === ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР ===
 
-# Создаем глобальный экземпляр только если есть настройки
 _global_notifier = None
 
 def get_telegram_notifier() -> Optional[TelegramNotifier]:
