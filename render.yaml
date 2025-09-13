@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: jesse-bybit-bot
+    env: docker
+    plan: starter
+    envVars:
+      - key: ENVIRONMENT
+        value: testing
+      - key: PASSWORD
+        value: admin123
+      - key: APP_PORT
+        value: 9000
+      - key: POSTGRES_HOST
+        value: dpg-d2tq3ier433s73dl8el0-a.oregon-postgres.render.com
+      - key: POSTGRES_NAME
+        value: jesse_db_42yh
+      - key: POSTGRES_PORT
+        value: 5432
+      - key: POSTGRES_USERNAME
+        value: jesse_user
+      - key: POSTGRES_PASSWORD
+        value: Hi7YKndXZMcChOCciRndvNxkQhkb6fgH
+      - key: POSTGRES_SSLMODE
+        value: require
+      - key: REDIS_HOST
+        value: redis-11696.c267.us-east-1-4.ec2.redns.redis-cloud.com
+      - key: REDIS_PORT
+        value: 11696
+      - key: REDIS_PASSWORD
+        value: KYCIv4Wq8rPUFGy7WpHTdOQ0ndupeMM7
+      # ByBit Testnet - УКАЗЫВАЕМ ЗНАЧЕНИЯ!
+      - key: BYBIT_USDT_PERPETUAL_TESTNET_API_KEY
+        value: Bf9g9znGeZKcB0X75z
+      - key: BYBIT_USDT_PERPETUAL_TESTNET_API_SECRET
+        value: LjuTNYKvctuTlSOMLk2FzurqJWFMvny273wE
