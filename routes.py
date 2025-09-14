@@ -3,7 +3,7 @@ routes = [
     {
         'exchange': 'Bybit USDT Perpetual',
         'symbol': 'BTCUSDT',
-        'timeframe': '1m',           # 1 МИНУТА для частых сигналов
+        'timeframe': '5m',           # 1 МИНУТА для частых сигналов
         'strategy': 'TestSignalStrategy'  # Новая тестовая стратегия
     },
     
