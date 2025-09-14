@@ -32,7 +32,7 @@ class TestSignalStrategy(Strategy):
         self.last_signal_bar = None
         
         logging.info(f"🧪 TEST STRATEGY INITIALIZED (FIXED VERSION)")
-        logging.info(f"⏱️  Timeframe: 1 minute")
+        logging.info(f"⏱️  Timeframe: 5 minutes")
         logging.info(f"🎯 Min price change: {self.min_price_change}%")
         logging.info(f"💰 Position size: {self.position_size} BTC")
 
