@@ -1,6 +1,4 @@
-# enhanced_strategy_base.py - ГОТОВАЯ К ДЕПЛОЮ ВЕРСИЯ
-# ИСПРАВЛЕНО: ИИ анализ в отдельных потоках, нет конфликта с Jesse event loop
-
+# enhanced_strategy_base.py - ИСПРАВЛЕННАЯ ВЕРСИЯ без конфликтов с Jesse
 from jesse.strategies import Strategy
 import threading
 import time
@@ -11,8 +9,12 @@ from typing import Dict, Any, Optional
 
 class EnhancedStrategy(Strategy):
     """
-    Расширенный базовый класс стратегии с ИИ анализом
-    Наследуется от Jesse Strategy, добавляя возможности ИИ анализа БЕЗ конфликтов
+    ИСПРАВЛЕННЫЙ расширенный базовый класс стратегии с ИИ анализом
+    
+    КЛЮЧЕВЫЕ ИСПРАВЛЕНИЯ:
+    - Убраны переопределения go_long() и go_short() 
+    - ИИ анализ запускается после размещения ордеров
+    - Нет конфликтов с базовой логикой Jesse
     """
     
     def __init__(self):
@@ -22,13 +24,13 @@ class EnhancedStrategy(Strategy):
         self.enable_ai_analysis = self._check_ai_enabled()
         self.enable_notifications = self._check_telegram_enabled()
         
-        # Кэш последних анализов (избегаем спама)
+        # Кэш последних анализов
         self.last_analysis_time = {}
         self.min_analysis_gap = 300  # 5 минут между анализами
         
         # Логирование состояния
         if self.enable_ai_analysis:
-            self.log("🤖 ИИ анализ ВКЛЮЧЕН")
+            self.log("🤖 ИИ анализ ВКЛЮЧЕН (исправленная версия)")
         else:
             self.log("⚠️ ИИ анализ ОТКЛЮЧЕН")
             
@@ -56,6 +58,63 @@ class EnhancedStrategy(Strategy):
         except Exception:
             return False
     
+    # === ИСПРАВЛЕНИЕ: НЕ переопределяем go_long() и go_short() ===
+    # Вместо этого используем колбэки после размещения ордеров
+    
+    def on_open_position(self, order):
+        """
+        ИСПРАВЛЕНО: Вызывается AFTER позиция открыта
+        Здесь запускаем ИИ анализ БЕЗ конфликтов с Jesse
+        """
+        try:
+            if hasattr(super(), 'on_open_position'):
+                super().on_open_position(order)
+            
+            # Определяем тип сигнала
+            signal_type = 'LONG' if self.is_long else 'SHORT' if self.is_short else 'UNKNOWN'
+            
+            self.log(f"📈 Позиция открыта: {signal_type} на {self.symbol} по цене {order.price}")
+            
+            # Запускаем ИИ анализ ПОСЛЕ открытия позиции
+            if self.enable_ai_analysis:
+                self._trigger_ai_analysis_async(
+                    signal_type=signal_type,
+                    reason=f"Position opened at {order.price}",
+                    additional_data={
+                        'entry_price': float(order.price),
+                        'position_size': float(order.qty)
+                    }
+                )
+            
+        except Exception as e:
+            self.log(f"❌ Ошибка в on_open_position: {e}")
+    
+    def on_close_position(self, order):
+        """
+        ИСПРАВЛЕНО: Анализируем результат сделки
+        """
+        try:
+            if hasattr(super(), 'on_close_position'):
+                super().on_close_position(order)
+            
+            pnl = float(self.position.pnl) if hasattr(self, 'position') and self.position else 0
+            self.log(f"🏁 Позиция закрыта на {self.symbol}. P&L: ${pnl:.2f}")
+            
+            # Анализируем результат сделки
+            if self.enable_ai_analysis:
+                self._trigger_ai_analysis_async(
+                    signal_type='EXIT',
+                    reason='Position closed',
+                    additional_data={
+                        'exit_price': float(order.price),
+                        'pnl': pnl,
+                        'exit_reason': 'TP_SL_or_Manual'
+                    }
+                )
+                
+        except Exception as e:
+            self.log(f"❌ Ошибка в on_close_position: {e}")
+    
     def _trigger_ai_analysis_async(self, signal_type: str, reason: str, additional_data: Dict = None):
         """
         ИСПРАВЛЕНО: Запускает ИИ анализ в отдельном потоке БЕЗ конфликта с Jesse
@@ -63,10 +122,10 @@ class EnhancedStrategy(Strategy):
         if not self.enable_ai_analysis:
             return
         
-        # Проверяем частоту анализов
         strategy_name = self.__class__.__name__
         current_time = time.time()
         
+        # Проверяем частоту анализов
         if (strategy_name in self.last_analysis_time and 
             current_time - self.last_analysis_time[strategy_name] < self.min_analysis_gap):
             self.log(f"⏰ Пропускаем ИИ анализ - слишком рано ({self.min_analysis_gap}с)")
@@ -79,11 +138,10 @@ class EnhancedStrategy(Strategy):
             self.log(f"❌ Ошибка сбора данных сигнала: {e}")
             return
         
-        # ИСПРАВЛЕНИЕ: Запускаем анализ в отдельном daemon потоке
+        # Запускаем анализ в отдельном daemon потоке
         def run_analysis_in_thread():
             """Функция для выполнения ИИ анализа в отдельном потоке"""
             try:
-                # Импортируем здесь чтобы избежать циклических импортов
                 import asyncio
                 
                 # Создаем НОВЫЙ event loop только для этого потока
@@ -92,15 +150,14 @@ class EnhancedStrategy(Strategy):
                 
                 async def perform_analysis():
                     try:
-                        # Динамический импорт для избежания ошибок при инициализации
+                        # Динамический импорт для избежания ошибок
                         from ai_analysis.openai_analyzer import OpenAIAnalyzer
                         from ai_analysis.market_context import MarketContextCollector
                         
-                        # Создаем анализаторы
                         analyzer = OpenAIAnalyzer()
                         context_collector = MarketContextCollector()
                         
-                        self.log(f"🤖 Запускаем ИИ анализ сигнала: {signal_type}")
+                        self.log(f"🤖 Запускаем ИИ анализ: {signal_type}")
                         
                         # Собираем рыночный контекст
                         market_data = await context_collector.collect_context(
@@ -115,7 +172,7 @@ class EnhancedStrategy(Strategy):
                         if ai_analysis:
                             recommendation = ai_analysis.get('recommendation', 'UNKNOWN')
                             confidence = ai_analysis.get('confidence', 0)
-                            self.log(f"✅ ИИ анализ завершен: {recommendation} ({confidence}%)")
+                            self.log(f"✅ ИИ анализ: {recommendation} ({confidence}%)")
                             
                             # Отправляем уведомление если включено
                             if self.enable_notifications:
@@ -127,7 +184,7 @@ class EnhancedStrategy(Strategy):
                         self.last_analysis_time[strategy_name] = current_time
                         
                     except Exception as e:
-                        self.log(f"❌ Ошибка выполнения ИИ анализа: {e}")
+                        self.log(f"❌ Ошибка ИИ анализа: {e}")
                 
                 # Выполняем анализ в этом event loop
                 loop.run_until_complete(perform_analysis())
@@ -135,13 +192,12 @@ class EnhancedStrategy(Strategy):
             except Exception as e:
                 self.log(f"❌ Ошибка потока ИИ анализа: {e}")
             finally:
-                # Закрываем event loop
                 try:
                     loop.close()
                 except Exception:
                     pass
         
-        # Запускаем в daemon потоке (завершится при завершении основного процесса)
+        # Запускаем в daemon потоке
         analysis_thread = threading.Thread(
             target=run_analysis_in_thread, 
             daemon=True,
@@ -154,18 +210,13 @@ class EnhancedStrategy(Strategy):
     async def _send_notification_async(self, signal_data: Dict, ai_analysis: Dict):
         """Отправляет уведомление через Telegram"""
         try:
-            # Динамический импорт
             from notifications.telegram_bot import TelegramNotifier
             from notifications.message_formatter import MessageFormatter
             
-            # Создаем компоненты
             notifier = TelegramNotifier()
             formatter = MessageFormatter()
             
-            # Форматируем сообщение
             message = formatter.format_analysis_message(signal_data, ai_analysis)
-            
-            # Отправляем
             success = await notifier.send_message_safe(message)
             
             if success:
@@ -181,7 +232,7 @@ class EnhancedStrategy(Strategy):
         try:
             return {
                 'strategy': self.__class__.__name__,
-                'signal_type': signal_type,  # 'LONG', 'SHORT', 'EXIT'
+                'signal_type': signal_type,
                 'reason': reason,
                 'price': float(self.close),
                 'timestamp': int(time.time()),
@@ -189,21 +240,16 @@ class EnhancedStrategy(Strategy):
                 'timeframe': self.timeframe,
                 'exchange': self.exchange,
                 
-                # Технические данные
                 'candles_data': {
                     'recent_candles': self._get_recent_candles_data(20),
                     'current_volume': float(self.candles[-1, 5]) if len(self.candles) > 0 else 0,
                 },
                 
-                # Индикаторы (если доступны)
                 'indicators': self._get_current_indicators(),
-                
-                # Дополнительные данные от стратегии
                 'additional_data': additional_data or {}
             }
         except Exception as e:
             self.log(f"❌ Ошибка сбора данных сигнала: {e}")
-            # Возвращаем минимальные данные
             return {
                 'strategy': self.__class__.__name__,
                 'signal_type': signal_type,
@@ -261,7 +307,7 @@ class EnhancedStrategy(Strategy):
             if hasattr(self, 'atr'):
                 indicators['atr'] = float(self.atr)
             
-            # Добавляем текущую цену как индикатор
+            # Текущая цена как индикатор
             if hasattr(self, 'close'):
                 indicators['current_price'] = float(self.close)
                 
@@ -269,86 +315,3 @@ class EnhancedStrategy(Strategy):
             self.log(f"⚠️ Ошибка получения индикаторов: {e}")
         
         return indicators
-    
-    # === ПЕРЕОПРЕДЕЛЕННЫЕ МЕТОДЫ ВХОДА ===
-    
-    def go_long(self):
-        """
-        ИСПРАВЛЕНО: Переопределяем go_long для добавления ИИ анализа
-        """
-        try:
-            # Сначала выполняем оригинальную логику Jesse
-            super().go_long()
-            self.log(f"📈 LONG позиция открыта на {self.symbol} по цене {self.close}")
-            
-            # Затем запускаем ИИ анализ асинхронно (если включен)
-            if self.enable_ai_analysis:
-                self._trigger_ai_analysis_async(
-                    signal_type='LONG',
-                    reason=getattr(self, 'entry_reason', 'Strategy signal'),
-                    additional_data={
-                        'entry_price': float(self.close),
-                        'position_size': getattr(self, '_position_size', 0)
-                    }
-                )
-            else:
-                self.log("⚠️ ИИ анализ отключен для LONG сигнала")
-                
-        except Exception as e:
-            self.log(f"❌ Ошибка в go_long: {e}")
-            # Не препятствуем торговле если ИИ анализ сломался
-    
-    def go_short(self):
-        """
-        ИСПРАВЛЕНО: Переопределяем go_short для добавления ИИ анализа
-        """
-        try:
-            # Сначала выполняем оригинальную логику Jesse
-            super().go_short()
-            self.log(f"📉 SHORT позиция открыта на {self.symbol} по цене {self.close}")
-            
-            # Затем запускаем ИИ анализ асинхронно (если включен)
-            if self.enable_ai_analysis:
-                self._trigger_ai_analysis_async(
-                    signal_type='SHORT',
-                    reason=getattr(self, 'entry_reason', 'Strategy signal'),
-                    additional_data={
-                        'entry_price': float(self.close),
-                        'position_size': getattr(self, '_position_size', 0)
-                    }
-                )
-            else:
-                self.log("⚠️ ИИ анализ отключен для SHORT сигнала")
-                
-        except Exception as e:
-            self.log(f"❌ Ошибка в go_short: {e}")
-            # Не препятствуем торговле если ИИ анализ сломался
-    
-    def on_close_position(self, order):
-        """
-        ИСПРАВЛЕНО: Переопределяем закрытие позиции для анализа результата
-        """
-        try:
-            # Выполняем оригинальную логику (если есть)
-            if hasattr(super(), 'on_close_position'):
-                super().on_close_position(order)
-            
-            # Логируем закрытие позиции
-            pnl = float(self.position.pnl) if hasattr(self, 'position') and self.position else 0
-            self.log(f"🏁 Позиция закрыта на {self.symbol}. P&L: ${pnl:.2f}")
-            
-            # Анализируем результат сделки (если ИИ включен)
-            if self.enable_ai_analysis:
-                self._trigger_ai_analysis_async(
-                    signal_type='EXIT',
-                    reason='Position closed',
-                    additional_data={
-                        'exit_price': float(order.price) if hasattr(order, 'price') else float(self.close),
-                        'pnl': pnl,
-                        'exit_reason': 'TP_SL_or_Manual'
-                    }
-                )
-                
-        except Exception as e:
-            self.log(f"❌ Ошибка в on_close_position: {e}")
-            # Не препятствуем нормальному закрытию позиции
