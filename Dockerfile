@@ -56,14 +56,26 @@ else\n\
     ls -la /home/*.py\n\
 fi\n\
 \n\
-echo "📖 Загружаем переменные из .env..."\n\
+echo "📖 Загружаем переменные из .env (БЕЗ ПЕРЕЗАПИСИ)..."\n\
 if [ -f ".env" ]; then\n\
-    export $(grep -v "^#" .env | grep -v "^$" | xargs)\n\
-    echo "✅ Переменные загружены:"\n\
+    # ИСПРАВЛЕНО: Загружаем только отсутствующие переменные\n\
+    while IFS= read -r line; do\n\
+        if [[ $line =~ ^[A-Z_]+=.* ]] && [[ ! $line =~ ^# ]]; then\n\
+            var_name=$(echo "$line" | cut -d= -f1)\n\
+            if [[ -z "${!var_name}" ]]; then\n\
+                export "$line"\n\
+                echo "  ✅ Загружена из .env: $var_name"\n\
+            else\n\
+                echo "  ⏩ Пропущена (уже установлена): $var_name=${!var_name:0:10}..."\n\
+            fi\n\
+        fi\n\
+    done < .env\n\
+    \n\
+    echo "📋 Итоговые переменные:"\n\
     echo "POSTGRES_HOST=$POSTGRES_HOST"\n\
     echo "REDIS_HOST=$REDIS_HOST" \n\
     echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:0:10}..."\n\
-    echo "OPENAI_API_KEY=${OPENAI_API_KEY:0:10}..."\n\
+    echo "OPENAI_API_KEY=${OPENAI_API_KEY:0:10}... (приоритет: $([ -n "$OPENAI_API_KEY" ] && echo "системная переменная" || echo ".env файл"))"\n\
 else\n\
     echo "❌ .env файл не найден!"\n\
     exit 1\n\
