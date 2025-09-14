@@ -1,4 +1,4 @@
-# market_analyzer.py - ИСПРАВЛЕНО: убираем mock данные, добавляем детальное логирование
+# market_analyzer.py - ИСПРАВЛЕННАЯ ФИНАЛЬНАЯ ВЕРСИЯ
 import asyncio
 from typing import Dict, Any, List
 import requests
@@ -10,7 +10,7 @@ import os
 
 class MarketAnalyzer:
     """
-    ИСПРАВЛЕННЫЙ анализатор рынка БЕЗ автоматических fallback'ов на mock данные
+    ИСПРАВЛЕННЫЙ анализатор рынка с официальной OpenAI библиотекой
     """
     
     def __init__(self):
@@ -23,10 +23,10 @@ class MarketAnalyzer:
             {'name': 'QualityTrader', 'timeframe': '1h'}
         ]
         
-        self.logger.info("🏗️ MarketAnalyzer инициализирован (БЕЗ mock данных)")
+        self.logger.info("🏗️ MarketAnalyzer инициализирован (с официальной OpenAI библиотекой)")
 
     async def analyze_all_strategies(self) -> Dict[str, Any]:
-        """ИСПРАВЛЕНО: анализ БЕЗ автоматических fallback'ов"""
+        """ИСПРАВЛЕНО: анализ с официальной OpenAI библиотекой"""
         try:
             self.logger.info("🚀 === НАЧАЛО АНАЛИЗА ВСЕХ СТРАТЕГИЙ ===")
             
@@ -49,12 +49,11 @@ class MarketAnalyzer:
                 strategy_analyses.append(analysis)
                 self.logger.info(f"  ✅ {strategy['name']}: {analysis['signal']} ({analysis['confidence']}%)")
             
-            # 3. ИИ анализ (КРИТИЧНО: без автоматических fallback'ов!)
+            # 3. ИИ анализ (ИСПРАВЛЕНО: с официальной OpenAI библиотекой!)
             self.logger.info("🧠 ШАГ 3: Запуск ИИ анализа (OpenAI)")
             overall_analysis = await self._get_ai_market_overview_strict(strategy_analyses, current_data)
             
             if not overall_analysis or 'error' in overall_analysis:
-                # НЕ возвращаем mock данные! Выбрасываем ошибку!
                 error_msg = overall_analysis.get('error', 'Неизвестная ошибка ИИ анализа') if overall_analysis else 'ИИ анализ вернул пустой результат'
                 raise Exception(f"Ошибка ИИ анализа: {error_msg}")
             
@@ -68,27 +67,23 @@ class MarketAnalyzer:
                 'overall_analysis': overall_analysis,
                 'market_phase': self._determine_market_phase(strategy_analyses),
                 'recommendations': overall_analysis.get('recommendations', []),
-                'data_source': 'REAL_API_DATA',  # Маркер что данные реальные
-                'analysis_type': 'FULL_AI_ANALYSIS'  # Маркер что анализ полный
+                'data_source': 'REAL_API_DATA',
+                'analysis_type': 'FULL_AI_ANALYSIS'
             }
             
             self.logger.info("🎉 === АНАЛИЗ ЗАВЕРШЕН УСПЕШНО ===")
             return result
             
         except Exception as e:
-            # КРИТИЧНО: НЕ возвращаем fallback данные! 
             self.logger.error(f"❌ ОШИБКА анализа стратегий: {e}")
             self.logger.error(f"Полный traceback: {traceback.format_exc()}")
-            
-            # Возвращаем ошибку, НЕ mock данные!
             raise Exception(f"Критическая ошибка MarketAnalyzer: {e}")
 
     async def _get_current_market_data_safe(self) -> Dict[str, Any]:
-        """ИСПРАВЛЕНО: получает данные с Bybit с детальным логированием"""
+        """Получает данные с Bybit с детальным логированием"""
         try:
             self.logger.info("🌐 Подключаюсь к Bybit API...")
             
-            # Проверяем подключение
             response = requests.get(
                 'https://api-testnet.bybit.com/v5/market/kline',
                 params={
@@ -97,7 +92,7 @@ class MarketAnalyzer:
                     'interval': '5',
                     'limit': 50
                 },
-                timeout=15  # Увеличили таймаут
+                timeout=15
             )
             
             self.logger.info(f"📡 Ответ Bybit API: статус {response.status_code}")
@@ -106,7 +101,6 @@ class MarketAnalyzer:
                 raise Exception(f"Bybit API вернул статус {response.status_code}")
             
             data = response.json()
-            self.logger.info(f"📋 Структура ответа: {list(data.keys()) if isinstance(data, dict) else type(data)}")
             
             if data.get('retCode') != 0:
                 error_msg = data.get('retMsg', 'Неизвестная ошибка Bybit API')
@@ -137,9 +131,9 @@ class MarketAnalyzer:
                 raise Exception("Не удалось обработать ни одной свечи из Bybit")
             
             candles_array = np.array(candle_data)
-            current_price = float(candles[0][4])  # Последняя цена закрытия
+            current_price = float(candles[0][4])
             
-            # Рассчитываем изменение за 24ч (упрощенно)
+            # Рассчитываем изменение за 24ч
             if len(candles) >= 10:
                 old_price = float(candles[10][4])
                 change_24h = ((current_price - old_price) / old_price) * 100
@@ -160,7 +154,6 @@ class MarketAnalyzer:
                 
         except Exception as e:
             self.logger.error(f"❌ Ошибка получения данных с Bybit: {e}")
-            # НЕ возвращаем mock данные! Пробрасываем ошибку дальше
             raise Exception(f"Не удалось получить данные с Bybit: {e}")
 
     def _analyze_strategy_sync(self, strategy: Dict, market_data: Dict) -> Dict[str, Any]:
@@ -228,9 +221,9 @@ class MarketAnalyzer:
             return 'HOLD'
 
     async def _get_ai_market_overview_strict(self, strategy_analyses: List, market_data: Dict) -> Dict[str, Any]:
-        """ИСПРАВЛЕНО: Строгий ИИ анализ БЕЗ fallback'ов на mock"""
+        """ИСПРАВЛЕНО: Строгий ИИ анализ с официальной OpenAI библиотекой"""
         try:
-            self.logger.info("🧠 Запуск строгого ИИ анализа...")
+            self.logger.info("🧠 Запуск ИИ анализа через официальную OpenAI библиотеку...")
             
             # Проверяем наличие OpenAI ключа
             openai_key = os.getenv('OPENAI_API_KEY')
@@ -239,20 +232,22 @@ class MarketAnalyzer:
             
             self.logger.info(f"🔑 OpenAI ключ найден (длина: {len(openai_key)})")
             
-            # РЕАЛЬНЫЙ запрос к OpenAI
-            import aiohttp
+            # ИСПРАВЛЕНИЕ: Используем официальную OpenAI библиотеку вместо aiohttp
+            import openai
+            
+            # Создаем асинхронного клиента
+            client = openai.AsyncOpenAI(api_key=openai_key)
             
             prompt = self._build_market_analysis_prompt(strategy_analyses, market_data)
             self.logger.info(f"📝 Промпт подготовлен (длина: {len(prompt)} символов)")
             
-            headers = {
-                'Authorization': f'Bearer {openai_key}',
-                'Content-Type': 'application/json'
-            }
+            model = os.getenv('OPENAI_MODEL', 'gpt-4')
+            self.logger.info(f"🤖 Отправляю запрос к OpenAI API (модель: {model})")
             
-            payload = {
-                'model': os.getenv('OPENAI_MODEL', 'gpt-4'),
-                'messages': [
+            # Делаем запрос через официальную библиотеку
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[
                     {
                         "role": "system", 
                         "content": self._get_market_analysis_system_prompt()
@@ -262,57 +257,34 @@ class MarketAnalyzer:
                         "content": prompt
                     }
                 ],
-                'temperature': 0.3,
-                'max_tokens': 1500
-            }
+                temperature=0.3,
+                max_tokens=1500
+            )
             
-            self.logger.info(f"🤖 Отправляю запрос к OpenAI API (модель: {payload['model']})")
+            self.logger.info("✅ Ответ OpenAI получен через официальную библиотеку!")
             
-            timeout = aiohttp.ClientTimeout(total=30)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post('https://api.openai.com/v1/chat/completions', 
-                                      headers=headers, json=payload) as response:
-                    
-                    self.logger.info(f"📡 Ответ OpenAI: статус {response.status}")
-                    
-                    if response.status == 401:
-                        raise Exception("Ошибка авторизации OpenAI API - проверьте API ключ")
-                    elif response.status == 429:
-                        raise Exception("Превышен лимит запросов OpenAI API")
-                    elif response.status == 500:
-                        raise Exception("Внутренняя ошибка сервера OpenAI")
-                    elif response.status != 200:
-                        error_text = await response.text()
-                        raise Exception(f"OpenAI API ошибка {response.status}: {error_text}")
-                    
-                    data = await response.json()
-                    self.logger.info("✅ Ответ OpenAI получен и распарсен")
-                    
-                    if 'choices' not in data or not data['choices']:
-                        raise Exception("OpenAI API вернул пустой ответ без choices")
-                    
-                    ai_text = data['choices'][0]['message']['content']
-                    self.logger.info(f"📄 Получен текст от GPT (длина: {len(ai_text)})")
-                    
-                    # Парсим ответ
-                    parsed_analysis = self._parse_ai_response_strict(ai_text)
-                    
-                    if not parsed_analysis or 'error' in parsed_analysis:
-                        raise Exception(f"Не удалось корректно распарсить ответ GPT: {parsed_analysis}")
-                    
-                    # Добавляем метки что это реальный ИИ анализ
-                    parsed_analysis['ai_source'] = 'OPENAI_GPT'
-                    parsed_analysis['analysis_type'] = 'REAL_AI'
-                    parsed_analysis['timestamp'] = datetime.now().isoformat()
-                    
-                    self.logger.info("✅ ИИ анализ успешно завершен и распарсен")
-                    return parsed_analysis
+            # Получаем текст ответа
+            ai_text = response.choices[0].message.content
+            self.logger.info(f"📄 Получен текст от GPT (длина: {len(ai_text)})")
+            
+            # Парсим ответ
+            parsed_analysis = self._parse_ai_response_strict(ai_text)
+            
+            if not parsed_analysis or 'error' in parsed_analysis:
+                raise Exception(f"Не удалось корректно распарсить ответ GPT: {parsed_analysis}")
+            
+            # Добавляем метки что это реальный ИИ анализ
+            parsed_analysis['ai_source'] = 'OPENAI_GPT'
+            parsed_analysis['analysis_type'] = 'REAL_AI'
+            parsed_analysis['timestamp'] = datetime.now().isoformat()
+            
+            self.logger.info("✅ ИИ анализ успешно завершен и распарсен")
+            return parsed_analysis
                     
         except Exception as e:
             self.logger.error(f"❌ КРИТИЧЕСКАЯ ошибка ИИ анализа: {e}")
             self.logger.error(f"Traceback: {traceback.format_exc()}")
             
-            # ВАЖНО: НЕ возвращаем mock данные!
             # Возвращаем объект с ошибкой
             return {
                 'error': str(e),
@@ -371,25 +343,21 @@ class MarketAnalyzer:
 НЕ добавляй никакой текст вне JSON. Отвечай только валидным JSON."""
 
     def _parse_ai_response_strict(self, response_text: str) -> Dict[str, Any]:
-        """ИСПРАВЛЕНО: Строгий парсинг без fallback'ов"""
+        """Строгий парсинг без fallback'ов"""
         try:
             import json
             
             self.logger.info("🔍 Начинаю парсинг ответа GPT...")
-            self.logger.info(f"📄 Первые 200 символов ответа: {response_text[:200]}...")
             
             # Ищем JSON в тексте
             start_idx = response_text.find('{')
             end_idx = response_text.rfind('}')
             
             if start_idx == -1 or end_idx == -1:
-                raise ValueError(f"JSON не найден в ответе GPT. Начало: {start_idx}, конец: {end_idx}")
+                raise ValueError(f"JSON не найден в ответе GPT")
             
             json_text = response_text[start_idx:end_idx + 1]
-            self.logger.info(f"🎯 Извлеченный JSON: {json_text}")
-            
             parsed = json.loads(json_text)
-            self.logger.info(f"✅ JSON успешно распарсен, ключи: {list(parsed.keys())}")
             
             # Валидация обязательных полей
             required_fields = ['market_phase', 'confidence', 'summary']
